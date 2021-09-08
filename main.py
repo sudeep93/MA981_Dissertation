@@ -19,13 +19,13 @@ tmdb.api_key = '40c05f4085c354479dc351c824a4b505'
 from tmdbv3api import Movie
 
 # load the nlp model and tfidf vectorizer from disk
-filename = 'nlp_model.pkl'
+filename = 'a.pkl'
 clf = pickle.load(open(filename, 'rb'))
-vectorizer = pickle.load(open('tranform.pkl','rb'))
+vectorizer = pickle.load(open('b.pkl','rb'))
 
 def similarity_tags():
     movie_df_ex = pd.read_csv('tags_recom.csv')
-    movie_df_ex=movie_df_ex.drop(['level_0', 'index'], axis=1)
+#     movie_df_ex=movie_df_ex.drop(['level_0', 'index'], axis=1)
     movie_df_ex['title']=movie_df_ex['title'].str.lower()
     tf = TfidfVectorizer(analyzer='word',ngram_range=(1, 2),min_df=0, stop_words='english')
     c  = CountVectorizer()
@@ -56,6 +56,7 @@ def recommendations_tags(title):
         l = []
         for i in titles.iloc[movie_indices]:
             l.append(i)
+        print(l)
     return l
 
 def weighted_rating(x):
@@ -75,22 +76,43 @@ def similarity_metadata():
     return smovie_df,indices,cosine_sim,titles
 
 
-def get_similar(movie_name,rating,corrMatrix):
-    similar_ratings = corrMatrix[movie_name]*(rating-2.5)
-    similar_ratings = similar_ratings.sort_values(ascending=False)
-    #print(type(similar_ratings))
-    
-    return similar_ratings
+# def get_similar(movie_name,rating,corrMatrix):
+#     similar_ratings = corrMatrix[movie_name]*(rating-2.5)
+#     similar_ratings = similar_ratings.sort_values(ascending=False)
+# #     print(similar_ratings[1])
+#     return similar_ratings
 
+# def colab(movie_name,rating):
+#     userRatings = pd.read_csv('ratings.csv')
+#     corrMatrix = userRatings.corr(method='pearson')
+# #     corrMatrix.head(100)
+#     similar_movies = pd.DataFrame()
+#     similar_movies = get_similar(movie_name,rating,corrMatrix).head(11) 
+#     similar_movies = similar_movies.to_frame()
+#     similar_movies = similar_movies.rename(index={0: "movies", 1: "sim"}).reset_index()
+#     # print(similar_movies.iloc[1:11,0:1])
+#     l = []
+#     for i in similar_movies.iloc[1:11,0:1]:
+#         l.append(i)
+#     return l
 def colab(movie_name,rating):
     userRatings = pd.read_csv('ratings.csv')
     corrMatrix = userRatings.corr(method='pearson')
 #     corrMatrix.head(100)
     similar_movies = pd.DataFrame()
-    
+    similar_movies = corrMatrix[movie_name]*(float(rating) - 2.5)
+    similar_movies = similar_movies.sort_values(ascending=False)
+#     similar_movies = get_similar(movie_name,rating,corrMatrix).head(11) 
+    similar_movies = similar_movies.to_frame()
+    similar_movies = similar_movies.rename(index={0: "movies", 1: "sim"}).reset_index()
+    # print(similar_movies.iloc[1:11,0:1])
+    l = []
+    for i in similar_movies['index'].iloc[1:11]:
+        l.append(i)
+    return l
+    # return similar_movies.iloc[1:11,0:1]
 
 
-    return get_similar(movie_name,rating,corrMatrix).head(10) 
 def recommendations_content(title):    
     title = title.lower()
     smovie_df,indices,cosine_sim,titles = similarity_metadata()
@@ -119,6 +141,7 @@ def recommendations_content(title):
         l = []
         for i in qualified['title'].head(10):
             l.append(i)
+        print(l)
     return l
 
 def ListOfGenres(genre_json):
@@ -162,64 +185,65 @@ def home():
 @app.route("/recommend",methods=['POST'])
 def recommend():
     # movie = request.args.get('title' # get movie name from the URL
-    movie = request.form['movie']
-    print("================>",movie)
+    movie_recom = request.form['movie']
+    print("================>",movie_recom)
     types = request.form['sel']
     print("================>",types)
 
-    print(movie,types)
+    print(movie_recom,types)
     if types=='tag':
         print("Taaaaaaaaag======================>")
 
-        r = recommendations_tags(movie)
+        r = recommendations_tags(movie_recom)
 
-        movie = movie.upper()
+        movie_recom = movie_recom.upper()
         if type(r)==type('string'): # no such movie found in the database
-            return render_template('recommend.html',movie=movie,r=r,t='s')
+            return render_template('recommend.html',movie=movie_recom,r=r,t='s')
         else:
             tmdb_movie = Movie()
-            result = tmdb_movie.search(movie)
+            result = tmdb_movie.search(movie_recom)
 
-            # get movie id and movie title
+            # id and name of the movie
             movie_id = result[0].id
             movie_name = result[0].title
             
-            # making API call
+            # calling api
             response = requests.get('https://api.themoviedb.org/3/movie/{}?api_key={}'.format(movie_id,tmdb.api_key))
             data_json = response.json()
             imdb_id = data_json['imdb_id']
             poster = data_json['poster_path']
             img_path = 'https://image.tmdb.org/t/p/original{}'.format(poster)
 
-            # getting list of genres form json
+            
             genre = ListOfGenres(data_json['genres'])
 
-            # web scraping to get user reviews from IMDB site
+            # web scraping reviews
             sauce = urllib.request.urlopen('https://www.imdb.com/title/{}/reviews?ref_=tt_ov_rt'.format(imdb_id)).read()
             soup = bs.BeautifulSoup(sauce,'lxml')
             soup_result = soup.find_all("div",{"class":"text show-more__control"})
 
-            reviews_list = [] # list of reviews
-            reviews_status = [] # list of comments (good or bad)
+            reviews_list = [] 
+            reviews_status = [] 
             for reviews in soup_result:
                 if reviews.string:
                     reviews_list.append(reviews.string)
                     # passing the review to our model
                     movie_review_list = np.array([reviews.string])
-                    movie_vector = vectorizer.transform(movie_review_list)
+                    movie_vector = vectorizer.fit(movie_review_list)
+#                     print(movie_vector.shape)
                     pred = clf.predict(movie_vector)
                     reviews_status.append('Positive' if pred else 'Negative')
 
-            # combining reviews and comments into dictionary
+            # merging reviews 
             movie_reviews = {reviews_list[i]: reviews_status[i] for i in range(len(reviews_list))} 
 
-            # getting votes with comma as thousands separators
-            vote_count = "{:,}".format(result[0].vote_count)
+            # reading votes
+            votes = "{:,}".format(result[0].vote_count)
             
-            # convert date to readable format (eg. 10-06-2019 to June 10 2019)
+            # change date format
             rd = date_convert(result[0].release_date)
 
-            # getting the status of the movie (released or not)
+            # movie status
             status = data_json['status']
 
             # convert minutes to hours minutes (eg. 148 minutes to 2 hours 28 mins)
@@ -234,23 +258,23 @@ def recommend():
                 response = requests.get('https://api.themoviedb.org/3/movie/{}?api_key={}'.format(movie_id,tmdb.api_key))
                 data_json = response.json()
                 poster.append('https://image.tmdb.org/t/p/original{}'.format(data_json['poster_path']))
-            movie_cards = {poster[i]: r[i] for i in range(len(r))}
+            movie_list = {poster[i]: r[i] for i in range(len(r))}
 
-            return render_template('recommend.html',movie=movie,mtitle=r,t='l',cards=movie_cards,
-            result=result[0],reviews=movie_reviews,img_path=img_path,genres=genre,vote_count=vote_count,
-            release_date=rd,status=status,runtime=runtime)
+            return render_template('recommend.html',movie=movie_recom,mtitle=r,t='l',cards=movie_list,
+            result=result[0],reviews=movie_reviews,img_path=img_path,genres=genre,vote_count=votes,
+            release_date=rd,runtime=runtime)
     elif types=='colab':
         print("Colab======================>")
         ratings = request.form['ratings']
         print("================>",ratings)
-        r = colab(movie,ratings)
-
-        movie = movie.upper()
+        r = colab(movie_recom,ratings)
+        print("movie recom======>",r)
+        movie_recom = movie_recom.upper()
         if type(r)==type('string'): # no such movie found in the database
-            return render_template('recommend.html',movie=movie,r=r,t='s')
+            return render_template('recommend.html',movie=movie_recom,r=r,t='s')
         else:
             tmdb_movie = Movie()
-            result = tmdb_movie.search(movie)
+            result = tmdb_movie.search(movie_recom)
 
             # get movie id and movie title
             movie_id = result[0].id
@@ -286,7 +310,7 @@ def recommend():
             movie_reviews = {reviews_list[i]: reviews_status[i] for i in range(len(reviews_list))} 
 
             # getting votes with comma as thousands separators
-            vote_count = "{:,}".format(result[0].vote_count)
+            votes = "{:,}".format(result[0].vote_count)
             
             # convert date to readable format (eg. 10-06-2019 to June 10 2019)
             rd = date_convert(result[0].release_date)
@@ -302,25 +326,29 @@ def recommend():
             movie_title_list = []
             for movie_title in r:
                 list_result = tmdb_movie.search(movie_title)
-                movie_id = list_result[0].id
-                response = requests.get('https://api.themoviedb.org/3/movie/{}?api_key={}'.format(movie_id,tmdb.api_key))
-                data_json = response.json()
-                poster.append('https://image.tmdb.org/t/p/original{}'.format(data_json['poster_path']))
-            movie_cards = {poster[i]: r[i] for i in range(len(r))}
+                print("list_result======>",list_result)
+                try:
+                    movie_id = list_result[0].id
+                    response = requests.get('https://api.themoviedb.org/3/movie/{}?api_key={}'.format(movie_id,tmdb.api_key))
+                    data_json = response.json()
+                    poster.append('https://image.tmdb.org/t/p/original{}'.format(data_json['poster_path']))
+                except IndexError:
+                    gotdata = 'null'
+            movie_list = {poster[i]: r[i] for i in range(len(r))}
 
-            return render_template('recommend.html',movie=movie,mtitle=r,t='l',cards=movie_cards,
-            result=result[0],reviews=movie_reviews,img_path=img_path,genres=genre,vote_count=vote_count,
-            release_date=rd,status=status,runtime=runtime)
+            return render_template('recommend.html',movie=movie_recom,mtitle=r,t='l',cards=movie_list,
+            result=result[0],reviews=movie_reviews,img_path=img_path,genres=genre,vote_count=votes,
+            release_date=rd,runtime=runtime)
 
     else :
-        r = recommendations_content(movie)
+        r = recommendations_content(movie_recom)
 
-        movie = movie.upper()
+        movie_recom = movie_recom.upper()
         if type(r)==type('string'): # no such movie found in the database
-            return render_template('recommend.html',movie=movie,r=r,t='s')
+            return render_template('recommend.html',movie=movie_recom,r=r,t='s')
         else:
             tmdb_movie = Movie()
-            result = tmdb_movie.search(movie)
+            result = tmdb_movie.search(movie_recom)
 
             # get movie id and movie title
             movie_id = result[0].id
@@ -356,7 +384,7 @@ def recommend():
             movie_reviews = {reviews_list[i]: reviews_status[i] for i in range(len(reviews_list))} 
 
             # getting votes with comma as thousands separators
-            vote_count = "{:,}".format(result[0].vote_count)
+            votes = "{:,}".format(result[0].vote_count)
             
             # convert date to readable format (eg. 10-06-2019 to June 10 2019)
             rd = date_convert(result[0].release_date)
@@ -376,14 +404,14 @@ def recommend():
                 response = requests.get('https://api.themoviedb.org/3/movie/{}?api_key={}'.format(movie_id,tmdb.api_key))
                 data_json = response.json()
                 poster.append('https://image.tmdb.org/t/p/original{}'.format(data_json['poster_path']))
-            movie_cards = {poster[i]: r[i] for i in range(len(r))}
+            movie_list = {poster[i]: r[i] for i in range(len(r))}
 
         # # get movie names for auto completion
         # suggestions = get_suggestions()
         
-        return render_template('recommend.html',movie=movie,mtitle=r,t='l',cards=movie_cards,
-            result=result[0],reviews=movie_reviews,img_path=img_path,genres=genre,vote_count=vote_count,
-            release_date=rd,status=status,runtime=runtime)
+        return render_template('recommend.html',movie=movie_recom,mtitle=r,t='l',cards=movie_list,
+            result=result[0],reviews=movie_reviews,img_path=img_path,genres=genre,vote_count=votes,
+            release_date=rd,runtime=runtime)
 
 if __name__ == '__main__':
     app.run(debug=True)

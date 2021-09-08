@@ -17,9 +17,15 @@
     padding: 0;
 }
 .rate {
-    float: left;
     height: 46px;
     padding: 0 10px;
+      position: absolute;
+  top:0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+    
+  margin: auto;
 }
 .rate:not(:checked) > input {
     position:absolute;
@@ -157,11 +163,11 @@
 		  <br>
       <p>Recommend By:</p>
   <input type="radio" id="tag" name="sel" value="tag">
-  <label for="tags">Tags</label><br>
+  <label for="tags">Content-Based - Tags</label><br>
   <input type="radio" id="metas" name="sel" value="metas">
-  <label for="metas">Metadata</label><br>
+  <label for="metas">Content-Based - Metadata</label><br>
     <input type="radio" id="metas" name="sel" value="colab">
-  <label for="colab">Metadata</label><br>
+  <label for="colab">Colaborative</label><br>
    <div class="rate">
     <input type="radio" id="star5" name="ratings" value="5" />
     <label for="star5" title="text">5 stars</label>
